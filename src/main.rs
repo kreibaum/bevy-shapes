@@ -21,23 +21,17 @@ fn main() {
                 ..default()
             }
         ))
-        .add_systems(Startup, setup)
+        .add_systems(Startup, (setup_camera, setup_enemy_spawner))
         .add_systems(Update, (rotation, fall, remove_offscreen_enemies, spawn_enemy))
-
         .run();
 }
 
 
-fn setup(mut commands: Commands,
-         mut meshes: ResMut<Assets<Mesh>>,
-         mut materials: ResMut<Assets<ColorMaterial>>, ) {
+fn setup_camera(mut commands: Commands,) {
     commands.spawn(Camera2dBundle {
         transform: Transform::from_translation(Vec3::new(0.0, 400.0, 1.0)),
         ..default()
     });
-
-    let pentagon = Mesh2dHandle(meshes.add(RegularPolygon::new(ENEMY_RADIUS, 5)));
-    let red = Color::hsl(0.0, 0.5, 0.5);
 }
 
 #[derive(Component)]
@@ -68,30 +62,39 @@ fn remove_offscreen_enemies(
 ) {
     for (entity, transform) in enemies.iter() {
         let world_position = transform.translation;
-        println!("World position: {:?}", world_position);
         if world_position.y + ENEMY_RADIUS < 0. {
             commands.entity(entity).despawn();
         }
     }
 }
 
+#[derive(Component)]
+struct EnemySpawner {
+    mesh: Mesh2dHandle,
+    material: Handle<ColorMaterial>,
+}
+
+fn setup_enemy_spawner(mut commands: Commands,
+                       mut meshes: ResMut<Assets<Mesh>>,
+                       mut materials: ResMut<Assets<ColorMaterial>>) {
+    let pentagon = Mesh2dHandle(meshes.add(RegularPolygon::new(ENEMY_RADIUS, 5)));
+    let red = Color::hsl(0.0, 0.5, 0.5);
+
+    commands.spawn(EnemySpawner {
+        mesh: pentagon,
+        material: materials.add(red),
+    });
+}
+
 // There is a 10% chane of spawning an enemy every second
 fn spawn_enemy(
     mut commands: Commands,
     time: Res<Time>,
-    enemies: Query<(), With<Enemy>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    spawner: Query<&EnemySpawner>,
 ) {
-    let enemy_count = enemies.iter().count();
-    println!("Enemy count: {}", enemy_count);
-
-    // Todo: theses are probably better as resources or something.
-    let pentagon = Mesh2dHandle(meshes.add(RegularPolygon::new(ENEMY_RADIUS, 5)));
-    let red = Color::hsl(0.0, 0.5, 0.5);
+    let spawner = spawner.single();
 
     if rand::random::<f32>() < time.delta_seconds() {
-        println!("Spawning enemy");
         let rotation_speed = if rand::random::<bool>() {
             rand::random::<f32>().powi(2) + 0.1
         } else {
@@ -99,10 +102,9 @@ fn spawn_enemy(
         };
 
         let start_position = Vec3::new(- WINDOW_WIDTH / 2. + ENEMY_RADIUS + rand::random::<f32>() * (WINDOW_WIDTH - 2.0 * ENEMY_RADIUS), WINDOW_HEIGHT, 0.);
-        println!("Start position: {:?}", start_position);
         commands.spawn((MaterialMesh2dBundle {
-            mesh: pentagon.clone(),
-            material: materials.add(red),
+            mesh: spawner.mesh.clone(),
+            material: spawner.material.clone(),
             transform: Transform::from_translation(start_position),
             ..Default::default()
         }, Enemy, RotationSpeed(rotation_speed), FallingSpeed(rand::random::<f32>() * 100.0 + 50.0)
