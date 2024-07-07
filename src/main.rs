@@ -1,42 +1,54 @@
 use bevy::prelude::*;
+use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
+
+// use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, HelloPlugin))
+        .add_plugins(DefaultPlugins)
+        .add_systems(Startup, setup)
+        .add_systems(Update, enemy_movement)
+//        .add_plugins(WorldInspectorPlugin::new())
         .run();
 }
 
-#[derive(Component)]
-struct Person;
+fn setup(mut commands: Commands,
+         mut meshes: ResMut<Assets<Mesh>>,
+         mut materials: ResMut<Assets<ColorMaterial>>, ) {
+    commands.spawn(Camera2dBundle::default());
 
-#[derive(Component)]
-struct Name(String);
+    let pentagon = Mesh2dHandle(meshes.add(RegularPolygon::new(50.0, 5)));
+    let red = Color::hsl(0.0, 0.5, 0.5);
 
-fn add_people(mut commands: Commands) {
-    commands.spawn((Person, Name("Elaina Proctor".to_string())));
-    commands.spawn((Person, Name("Renzo Hume".to_string())));
-    commands.spawn((Person, Name("Zayna Nieves".to_string())));
-}
+    // Spawn a 5x5 enemy grid
 
-#[derive(Resource)]
-struct GreetTimer(Timer);
+    for x in -2..=2 {
+        for y in -2..=2 {
+            let rotation_speed = if rand::random::<bool>() {
+                rand::random::<f32>().powi(2) + 0.1
+            } else {
+                -rand::random::<f32>().powi(2) - 0.1
+            };
 
-fn greet_people(time: Res<Time>, mut timer: ResMut<GreetTimer>, query: Query<&Name, With<Person>>) {
-    // update our timer with the time elapsed since the last update
-    // if that caused the timer to finish, we say hello to everyone
-    if timer.0.tick(time.delta()).just_finished() {
-        for name in &query {
-            println!("hello {}!", name.0);
+            commands.spawn((MaterialMesh2dBundle {
+                mesh: pentagon.clone(),
+                material: materials.add(red),
+                transform: Transform::from_translation(Vec3::new(x as f32 * 100.0, y as f32 * 100.0, 0.0)),
+                ..Default::default()
+            }, Enemy, RotationSpeed(rotation_speed)
+            ));
         }
     }
 }
 
-pub struct HelloPlugin;
+#[derive(Component)]
+struct RotationSpeed(f32);
 
-impl Plugin for HelloPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(Startup, add_people)
-            .add_systems(Update, greet_people)
-            .insert_resource(GreetTimer(Timer::from_seconds(2.0, TimerMode::Repeating)));
+#[derive(Component)]
+struct Enemy;
+
+fn enemy_movement(time: Res<Time>, mut query: Query<(&RotationSpeed, &mut Transform)>) {
+    for (rotation, mut transform) in query.iter_mut() {
+        transform.rotation *= Quat::from_rotation_z(time.delta_seconds() * rotation.0);
     }
 }
